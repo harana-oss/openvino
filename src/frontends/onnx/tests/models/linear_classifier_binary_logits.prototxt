@@ -1,0 +1,48 @@
+ir_version: 3
+producer_name: "unit-test"
+graph {
+  name: "LinearClassifierBinaryLogits"
+  input {
+    name: "X"
+    type { tensor_type { elem_type: 1 shape { dim { dim_value: 2 } } } }
+  }
+  output {
+    name: "Y"
+    type { tensor_type { elem_type: 7 shape { dim { dim_value: 1 } } } }
+  }
+  output {
+    name: "Z"
+    type { tensor_type { elem_type: 1 shape { dim { dim_value: 1 } dim { dim_value: 2 } } } }
+  }
+  node {
+    input: "X"
+    output: "Y"
+    output: "Z"
+    name: "lc"
+    op_type: "LinearClassifier"
+    domain: "ai.onnx.ml"
+    attribute {
+      name: "coefficients"
+      floats: 1.5
+      floats: -2.0
+      type: FLOATS
+    }
+    attribute {
+      name: "intercepts"
+      floats: -0.3
+      type: FLOATS
+    }
+    attribute {
+      name: "classlabels_ints"
+      ints: 10
+      ints: 20
+      type: INTS
+    }
+    attribute {
+      name: "post_transform"
+      s: "LOGISTIC"
+      type: STRING
+    }
+  }
+}
+opset_import { version: 11 }

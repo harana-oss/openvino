@@ -1,0 +1,19 @@
+ir_version: 3
+producer_name: "unit-test"
+graph {
+  name: "LinearClassifierMulticlassNoIntercepts"
+  input { name: "X" type { tensor_type { elem_type: 1 shape { dim { dim_value: 4 } } } } }
+  output { name: "Y" type { tensor_type { elem_type: 7 shape { dim { dim_value: 1 } } } } }
+  output { name: "Z" type { tensor_type { elem_type: 1 shape { dim { dim_value: 1 } dim { dim_value: 3 } } } } }
+  node {
+    input: "X"
+    output: "Y"
+    output: "Z"
+    name: "lc"
+    op_type: "LinearClassifier"
+    domain: "ai.onnx.ml"
+    attribute { name: "coefficients" floats: 0.2 floats: -0.1 floats: 0.05 floats: -0.3 floats: 0.4 floats: -0.5 floats: 0.6 floats: -0.7 floats: 0.8 floats: -0.9 floats: 1.0 floats: -1.1 type: FLOATS }
+    attribute { name: "classlabels_ints" ints: 1 ints: 2 ints: 3 type: INTS }
+  }
+}
+opset_import { version: 11 }

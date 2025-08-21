@@ -1,0 +1,44 @@
+ir_version: 3
+producer_name: "unit-test"
+graph {
+  name: "LinearClassifierBinarySinglePlane"
+  input {
+    name: "X"
+    type { tensor_type { elem_type: 1 shape { dim { dim_value: 3 } } } }
+  }
+  output {
+    name: "Y"
+    type { tensor_type { elem_type: 7 shape { dim { dim_value: 1 } } } }
+  }
+  output {
+    name: "Z"
+    type { tensor_type { elem_type: 1 shape { dim { dim_value: 1 } dim { dim_value: 2 } } } }
+  }
+  node {
+    input: "X"
+    output: "Y"
+    output: "Z"
+    name: "lc"
+    op_type: "LinearClassifier"
+    domain: "ai.onnx.ml"
+    attribute {
+      name: "coefficients"
+      floats: 0.5
+      floats: -0.25
+      floats: 1.0
+      type: FLOATS
+    }
+    attribute {
+      name: "intercepts"
+      floats: 0.1
+      type: FLOATS
+    }
+    attribute {
+      name: "classlabels_ints"
+      ints: 0
+      ints: 1
+      type: INTS
+    }
+  }
+}
+opset_import { version: 11 }

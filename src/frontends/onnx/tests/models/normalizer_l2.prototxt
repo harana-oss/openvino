@@ -1,0 +1,16 @@
+ir_version: 3
+producer_name: "unit-test"
+graph {
+  name: "NormalizerL2"
+  input { name: "X" type { tensor_type { elem_type: 1 shape { dim { dim_value: 2 } dim { dim_value: 3 } } } } }
+  output { name: "Y" type { tensor_type { elem_type: 1 shape { dim { dim_value: 2 } dim { dim_value: 3 } } } } }
+  node {
+    input: "X"
+    output: "Y"
+    name: "norm"
+    op_type: "Normalizer"
+    domain: "ai.onnx.ml"
+    attribute { name: "norm" s: "L2" type: STRING }
+  }
+}
+opset_import { version: 11 }

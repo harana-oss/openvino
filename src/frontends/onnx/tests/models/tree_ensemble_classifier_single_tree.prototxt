@@ -1,0 +1,33 @@
+ir_version: 7
+producer_name: "unit"
+producer_version: "1"
+model_version: 1
+opset_import { domain: "" version: 17 }
+opset_import { domain: "ai.onnx.ml" version: 3 }
+graph {
+  name: "TreeEnsembleClassifierSingleTree"
+  node {
+    input: "X"
+    output: "Y"
+    output: "Z"
+    op_type: "TreeEnsembleClassifier"
+    domain: "ai.onnx.ml"
+    attribute { name: "nodes_treeids" ints: 0 ints: 0 ints: 0 type: INTS }
+    attribute { name: "nodes_nodeids" ints: 0 ints: 1 ints: 2 type: INTS }
+    attribute { name: "nodes_featureids" ints: 0 ints: 0 ints: 0 type: INTS }
+    attribute { name: "nodes_modes" strings: "BRANCH_LEQ" strings: "LEAF" strings: "LEAF" type: STRINGS }
+    attribute { name: "nodes_truenodeids" ints: 1 ints: 0 ints: 0 type: INTS }
+    attribute { name: "nodes_falsenodeids" ints: 2 ints: 0 ints: 0 type: INTS }
+    attribute { name: "nodes_values" floats: 1.5 floats: 0.0 floats: 0.0 type: FLOATS }
+    attribute { name: "class_treeids" ints: 0 ints: 0 type: INTS }
+    attribute { name: "class_nodeids" ints: 1 ints: 2 type: INTS }
+    attribute { name: "class_ids" ints: 0 ints: 1 type: INTS }
+    attribute { name: "class_weights" floats: 2.0 floats: 3.0 type: FLOATS }
+    attribute { name: "classlabels_int64s" ints: 0 ints: 1 type: INTS }
+    attribute { name: "post_transform" s: "SOFTMAX" type: STRING }
+  }
+  initializer { name: "X" dims: 4 dims: 1 data_type: 1 float_data: 1.0 float_data: 1.4 float_data: 1.6 float_data: 2.0 }
+  value_info { name: "X" type { tensor_type { elem_type: 1 shape { dim { dim_value: 4 } dim { dim_value: 1 } } } } }
+  output { name: "Y" type { tensor_type { elem_type: 7 shape { dim { dim_value: 4 } } } } }
+  output { name: "Z" type { tensor_type { elem_type: 1 shape { dim { dim_value: 4 } dim { dim_value: 2 } } } } }
+}

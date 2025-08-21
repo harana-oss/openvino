@@ -549,8 +549,6 @@ tests_expected_to_fail = [
         "OnnxBackendNodeModelTest.test_ai_onnx_ml_label_encoder_string_int_no_default_cpu",
         "OnnxBackendNodeModelTest.test_ai_onnx_ml_label_encoder_tensor_mapping_cpu",
         "OnnxBackendNodeModelTest.test_ai_onnx_ml_label_encoder_tensor_value_only_mapping_cpu",
-        "OnnxBackendNodeModelTest.test_ai_onnx_ml_tree_ensemble_set_membership_cpu",
-        "OnnxBackendNodeModelTest.test_ai_onnx_ml_tree_ensemble_single_tree_cpu",
     ),
     (
         xfail_issue_119926,
