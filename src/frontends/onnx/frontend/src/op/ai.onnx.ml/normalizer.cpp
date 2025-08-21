@@ -68,22 +68,25 @@ ov::OutputVector normalizer(const ov::frontend::onnx::Node& node) {
     auto one = ov::op::v0::Constant::create(div->get_element_type(), ov::Shape{}, {1.0f});
     auto safe_div = std::make_shared<ov::op::v1::Select>(is_zero, one, div);
     auto quot = std::make_shared<ov::op::v1::Divide>(X, safe_div);
-    auto Y = std::make_shared<ov::op::v1::Select>(is_zero, X, quot);
+    // Use ov::Output<ov::Node> so we can later replace Select with Reshape if needed
+    ov::Output<ov::Node> Y = std::make_shared<ov::op::v1::Select>(is_zero, X, quot);
 
     // Ensure output shape matches input shape (important for 1D inputs)
     // The ONNX spec requires that output shape equals input shape
     auto input_shape = X.get_partial_shape();
     if (input_shape.rank().is_static() && input_shape.is_static()) {
         // For static shapes, explicitly reshape if needed
-        auto Y_shape = Y->get_partial_shape();
+        auto Y_shape = Y.get_partial_shape();
         if (Y_shape != input_shape) {
-            auto target_shape = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{input_shape.rank().get_length()}, input_shape.to_shape());
+            auto target_shape = ov::op::v0::Constant::create(ov::element::i64,
+                                                             ov::Shape{static_cast<size_t>(input_shape.rank().get_length())},
+                                                             input_shape.to_shape());
             Y = std::make_shared<ov::op::v1::Reshape>(Y, target_shape, false);
         }
     } else if (input_shape.rank().is_static()) {
         // For dynamic shapes, use the shape of X directly
-        auto shape_of_X = std::make_shared<ov::op::v3::ShapeOf>(X);
-        Y = std::make_shared<ov::op::v1::Reshape>(Y, shape_of_X, false);
+    auto shape_of_X = std::make_shared<ov::op::v3::ShapeOf>(X);
+    Y = std::make_shared<ov::op::v1::Reshape>(Y, shape_of_X, false);
     }
 
     return {Y};
