@@ -147,7 +147,7 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
 
 namespace opset_1 {
 ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::linear_classifier_impl(node); }
-ONNX_OP("LinearClassifier", OPSET_SINCE(1), ai_onnx::opset_1::linear_classifier, "ai.onnx.ml");
+ONNX_OP("LinearClassifier", OPSET_SINCE(1), ai_onnx::opset_1::linear_classifier);
 } // namespace opset_1
 
 } // namespace ai_onnx

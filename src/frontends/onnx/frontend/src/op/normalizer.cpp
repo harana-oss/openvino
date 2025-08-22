@@ -86,7 +86,7 @@ ov::OutputVector normalizer_impl(const ov::frontend::onnx::Node& node) {
 
 namespace opset_1 {
 ov::OutputVector normalizer(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::normalizer_impl(node); }
-ONNX_OP("Normalizer", OPSET_SINCE(1), ai_onnx::opset_1::normalizer, "ai.onnx.ml");
+ONNX_OP("Normalizer", OPSET_SINCE(1), ai_onnx::opset_1::normalizer);
 } // namespace opset_1
 
 } // namespace ai_onnx
