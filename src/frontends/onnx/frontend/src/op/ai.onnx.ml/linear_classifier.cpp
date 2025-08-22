@@ -101,17 +101,6 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
         scores = std::make_shared<ov::op::v1::Add>(scores, bias_row);
     }
 
-    // Binary expansion if single hyperplane but 2 classes
-    bool binary_two_class = (k == 1 && n_classes == 2);
-    if (binary_two_class) {
-        // scores shape [N,1] -> make [-s, s]
-        auto neg_one = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{}, {-1.f});
-        auto neg_scores = std::make_shared<ov::op::v1::Multiply>(scores, neg_one);
-        // Concat along axis 1
-        scores = std::make_shared<ov::op::v0::Concat>(ov::OutputVector{neg_scores, scores}, 1);
-        k = 2;
-    }
-
     // post_transform
     std::string post_transform = node.get_attribute_value<std::string>("post_transform", "NONE");
     std::shared_ptr<ov::Node> transformed = scores;
@@ -147,7 +136,7 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
 
 namespace opset_1 {
 ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::linear_classifier_impl(node); }
-// Moved to ai.onnx.ml domain registration in op/ai.onnx.ml/linear_classifier.cpp
+ONNX_OP("LinearClassifier", OPSET_SINCE(1), ai_onnx::opset_1::linear_classifier, AU_ONNX_ML_DOMAIN);
 } // namespace opset_1
 
 } // namespace ai_onnx

@@ -327,11 +327,11 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
 
 namespace opset_1 {
 ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::tree_ensemble_classifier_impl(node); }
-// Moved to ai.onnx.ml domain registration in op/ai.onnx.ml/tree_ensemble_classifier.cpp
+ONNX_OP("TreeEnsembleClassifier", OPSET_SINCE(1), ai_onnx::opset_1::tree_ensemble_classifier, AU_ONNX_ML_DOMAIN);
 } // namespace opset_1
 namespace opset_3 {
 ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::tree_ensemble_classifier_impl(node); }
-// Moved to ai.onnx.ml domain registration in op/ai.onnx.ml/tree_ensemble_classifier.cpp
+ONNX_OP("TreeEnsembleClassifier", OPSET_SINCE(3), ai_onnx::opset_3::tree_ensemble_classifier, AU_ONNX_ML_DOMAIN);
 } // namespace opset_3
 
 } // namespace ai_onnx
