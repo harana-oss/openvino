@@ -9,7 +9,7 @@ graph {
     output: "Y"
     name: "norm"
     op_type: "Normalizer"
-    domain: "ai.onnx.ml"
+    domain: "ai.onnx"
     attribute { name: "norm" s: "MAX" type: STRING }
   }
 }

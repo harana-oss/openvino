@@ -64,6 +64,6 @@ opset_import {
   version: 7
 }
 opset_import {
-  domain: "ai.onnx.ml"
+  domain: "ai.onnx"
   version: 2
 }

@@ -3,7 +3,7 @@ producer_name: "unit"
 producer_version: "1"
 model_version: 1
 opset_import { domain: "" version: 17 }
-opset_import { domain: "ai.onnx.ml" version: 3 }
+opset_import { domain: "ai.onnx" version: 3 }
 graph {
   name: "TreeEnsembleClassifierMissingNaN"
   node {
@@ -11,7 +11,7 @@ graph {
     output: "Y"
     output: "Z"
     op_type: "TreeEnsembleClassifier"
-    domain: "ai.onnx.ml"
+    domain: "ai.onnx"
     attribute { name: "nodes_treeids" ints: 0 ints: 0 ints: 0 type: INTS }
     attribute { name: "nodes_nodeids" ints: 0 ints: 1 ints: 2 type: INTS }
     attribute { name: "nodes_featureids" ints: 0 ints: 0 ints: 0 type: INTS }

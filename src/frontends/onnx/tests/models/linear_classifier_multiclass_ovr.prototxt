@@ -20,7 +20,7 @@ graph {
     output: "Z"
     name: "lc"
     op_type: "LinearClassifier"
-    domain: "ai.onnx.ml"
+    domain: "ai.onnx"
     attribute {
       name: "coefficients"
       floats: 0.1

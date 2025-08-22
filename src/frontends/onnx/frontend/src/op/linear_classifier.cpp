@@ -25,7 +25,7 @@
 namespace ov {
 namespace frontend {
 namespace onnx {
-namespace ai_onnx_ml {
+namespace ai_onnx {
 namespace {
 
 ov::Output<ov::Node> ensure_float(const ov::Output<ov::Node>& inp) {
@@ -37,7 +37,7 @@ ov::Output<ov::Node> ensure_float(const ov::Output<ov::Node>& inp) {
     return std::make_shared<ov::op::v0::Convert>(inp, ov::element::f32);
 }
 
-ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) {
+ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     auto X = node.get_ov_inputs().at(0);
     X = ensure_float(X);
 
@@ -71,10 +71,8 @@ ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) {
     } else if (n_classes > 0) {
         // In binary case we may have k=1
         if (n_classes == 2) {
-            // assume binary single hyperplane if coefficients size not divisible by 2 *some feature count*?
-            // We cannot know n_features yet. Prefer assuming OvR => k = n_classes unless coefficients length seems consistent with k=1
-            // Heuristic: if coefficients.size() % n_classes != 0 -> treat k=1 else k=n_classes
-            if (coefficients.size() % 2 != 0) k = 1; else k = n_classes; 
+            // Heuristic: if coefficients.size() % 2 != 0 -> treat k=1 else k=n_classes
+            if (coefficients.size() % 2 != 0) k = 1; else k = n_classes;
         } else {
             k = n_classes;
         }
@@ -94,7 +92,6 @@ ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) {
     // Add intercepts if provided
     if (!intercepts.empty()) {
         auto bias = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{static_cast<size_t>(intercepts.size())}, intercepts);
-        // unsqueeze to [1,k]
         if (intercepts.size() != k) {
             // Special binary case: intercepts.size()==1 && k may be 1 or 2; only add if consistent
             CHECK_VALID_NODE(node, intercepts.size() == 1 && k >= 1, "LinearClassifier: unexpected intercepts size");
@@ -149,11 +146,12 @@ ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) {
 } // namespace
 
 namespace opset_1 {
-ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx_ml::linear_classifier(node); }
-ONNX_OP("LinearClassifier", OPSET_SINCE(1), ai_onnx_ml::opset_1::linear_classifier, "ai.onnx.ml");
+ov::OutputVector linear_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::linear_classifier_impl(node); }
+ONNX_OP("LinearClassifier", OPSET_SINCE(1), ai_onnx::opset_1::linear_classifier);
+ONNX_OP("LinearClassifier", OPSET_SINCE(1), ai_onnx::opset_1::linear_classifier, "ai.onnx.ml");
 } // namespace opset_1
 
-} // namespace ai_onnx_ml
+} // namespace ai_onnx
 } // namespace onnx
 } // namespace frontend
 } // namespace ov
