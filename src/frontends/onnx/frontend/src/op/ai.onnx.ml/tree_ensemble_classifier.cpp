@@ -28,7 +28,7 @@
 #include "openvino/op/unsqueeze.hpp"
 #include "openvino/op/softmax.hpp"
 #include "openvino/op/sigmoid.hpp"
-#include "openvino/op/topk.hpp"
+#include "openvino/op/topk.hpp" // use TopK instead of ArgMax
 #include "openvino/op/convert_like.hpp"
 
 #include <unordered_map>
@@ -38,7 +38,7 @@
 namespace ov {
 namespace frontend {
 namespace onnx {
-namespace ai_onnx {
+namespace ai_onnx_ml {
 namespace {
 
 struct NodeInfo {
@@ -122,10 +122,12 @@ ov::Output<ov::Node> build_leaf_path(int64_t treeid,
                                      const ov::Output<ov::Node>& X,
                                      std::unordered_map<NodeKey, ov::Output<ov::Node>, NodeKeyHash>& cond_cache,
                                      std::unordered_map<int64_t, ov::Output<ov::Node>>& feat_cache) {
+    // ascend to root collecting (node, direction)
     struct Edge { NodeInfo parent; bool took_true; };
     std::vector<Edge> path_edges;
     int64_t current = leaf_nodeid;
     int64_t root = root_nodeid_for_tree.at(treeid);
+    // build parent lookup
     std::unordered_map<int64_t, NodeInfo> parent_by_child; // within the tree
     for (auto& kv : node_map) {
         if (kv.first.first != treeid) continue;
@@ -137,12 +139,14 @@ ov::Output<ov::Node> build_leaf_path(int64_t treeid,
     }
     while (current != root) {
         auto pit = parent_by_child.find(current);
-        FRONT_END_GENERAL_CHECK(pit != parent_by_child.end(), "Cannot find parent for node id " + std::to_string(current));
+        if (pit == parent_by_child.end())
+            FRONT_END_GENERAL_CHECK(false, "Cannot find parent for node id " + std::to_string(current));
         const auto parent = pit->second;
         bool took_true = (parent.truenodeid == current);
         path_edges.push_back({parent, took_true});
         current = parent.nodeid;
     }
+    // now build predicate from root downwards (reverse path_edges)
     auto true_c = ov::op::v0::Constant::create(ov::element::boolean, ov::Shape{1}, {true});
     ov::Output<ov::Node> path = true_c;
     for (auto it = path_edges.rbegin(); it != path_edges.rend(); ++it) {
@@ -153,7 +157,7 @@ ov::Output<ov::Node> build_leaf_path(int64_t treeid,
     return path; // boolean [N]
 }
 
-ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& node) {
+ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) {
     auto X = node.get_ov_inputs().at(0);
     if (X.get_element_type() != ov::element::f32 && X.get_element_type() != ov::element::f16 && !X.get_element_type().is_real()) {
         X = std::make_shared<ov::op::v0::Convert>(X, ov::element::f32);
@@ -208,6 +212,7 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
 
     size_t n_classes = has_int_labels ? classlabels_int64s.size() : classlabels_strings.size();
     if (n_classes == 0) {
+        // derive from class_ids
         n_classes = *std::max_element(class_ids.begin(), class_ids.end()) + 1;
     }
 
@@ -240,7 +245,7 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
         int64_t treeid = kv.first;
         int64_t root_candidate = -1;
         for (auto nid : kv.second) {
-            if (!children_per_tree[treeid].count(nid)) { // node not referenced as child
+            if (!children_per_tree[treeid].count(nid)) { // actually root is node not referenced as child
                 root_candidate = nid;
                 break;
             }
@@ -257,28 +262,36 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
     }
 
     // Precompute per-leaf class weight vectors
+    // Aggregate class weights that correspond to leaf (treeid,nodeid)
     std::unordered_map<NodeKey, std::vector<float>, NodeKeyHash> leaf_class_weights;
     for (size_t i = 0; i < class_ids.size(); ++i) {
         NodeKey key{class_treeids[i], class_nodeids[i]};
         auto& vec = leaf_class_weights[key];
         if (vec.empty()) vec.assign(n_classes, 0.f);
         int64_t cid = class_ids[i];
-        if (static_cast<size_t>(cid) >= n_classes) continue;
+        if (static_cast<size_t>(cid) >= n_classes) continue; // safety
         vec[cid] += class_weights[i];
     }
 
-    std::shared_ptr<ov::Node> scores;
+    std::shared_ptr<ov::Node> scores; // [N, n_classes]
+    // initialize with zeros: we will create path_mask_float * class_weight vectors and sum
+    // We'll defer initialization until first addition
+
     std::unordered_map<NodeKey, ov::Output<ov::Node>, NodeKeyHash> cond_cache;
     std::unordered_map<int64_t, ov::Output<ov::Node>> feat_cache;
 
     for (const auto& leaf : leaves) {
         NodeKey key{leaf.treeid, leaf.nodeid};
         auto itw = leaf_class_weights.find(key);
-        if (itw == leaf_class_weights.end()) continue;
+        if (itw == leaf_class_weights.end()) continue; // leaf with no contribution
+        // path predicate [N]
         auto path_bool = build_leaf_path(leaf.treeid, leaf.nodeid, node_map, root_nodeid_for_tree, X, cond_cache, feat_cache);
+        // convert to float [N]
         auto path_float = std::make_shared<ov::op::v0::Convert>(path_bool, ov::element::f32);
+        // unsqueeze axis=1 to [N,1]
         auto axis1 = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {1});
         auto path_unsq = std::make_shared<ov::op::v0::Unsqueeze>(path_float, axis1);
+        // class weight row constant [1, n_classes]
         auto& wvec = itw->second;
         auto wconst = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{1, wvec.size()}, wvec);
         auto contrib = std::make_shared<ov::op::v1::Multiply>(path_unsq, wconst);
@@ -287,15 +300,17 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
         else
             scores = std::make_shared<ov::op::v1::Add>(scores, contrib);
     }
-    if (!scores) {
+    if (!scores) { // no leaves? produce zeros
         scores = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{1, n_classes}, std::vector<float>(n_classes, 0.f));
     }
 
+    // Add base values if provided
     if (!base_values.empty()) {
         auto base_c = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{1, base_values.size()}, base_values);
         scores = std::make_shared<ov::op::v1::Add>(scores, base_c);
     }
 
+    // post_transform
     std::string post_transform = node.get_attribute_value<std::string>("post_transform", "NONE");
     std::shared_ptr<ov::Node> transformed = scores;
     if (post_transform == "LOGISTIC") {
@@ -303,14 +318,19 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
     } else if (post_transform == "SOFTMAX") {
         transformed = std::make_shared<ov::op::v8::Softmax>(scores, 1);
     } else if (post_transform == "SOFTMAX_ZERO") {
+        // Approximate with regular softmax (difference only for near-zero values)
         transformed = std::make_shared<ov::op::v8::Softmax>(scores, 1);
     } else if (post_transform == "PROBIT") {
+        // Not directly supported; fallback to identity (could be improved with approximation)
+        transformed = scores;
+    } else { // NONE or unknown
         transformed = scores;
     }
 
+    // ArgMax to get class indices (use TopK with k=1 since ArgMax header not available)
     auto k_const = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{}, {1});
     auto topk = std::make_shared<ov::op::v1::TopK>(transformed, k_const, 1, ov::op::v1::TopK::Mode::MAX, ov::op::v1::TopK::SortType::NONE, ov::element::i64);
-    auto argmax = topk->output(1);
+    auto argmax = topk->output(1); // indices output
     std::shared_ptr<ov::Node> labels_output;
     if (has_int_labels) {
         auto labels_const = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{static_cast<size_t>(n_classes)}, classlabels_int64s);
@@ -326,15 +346,15 @@ ov::OutputVector tree_ensemble_classifier_impl(const ov::frontend::onnx::Node& n
 } // namespace
 
 namespace opset_1 {
-ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::tree_ensemble_classifier_impl(node); }
-ONNX_OP("TreeEnsembleClassifier", OPSET_SINCE(1), ai_onnx::opset_1::tree_ensemble_classifier, "ai.onnx.ml");
+ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx_ml::tree_ensemble_classifier(node); }
+// Registration moved to default domain file: src/op/tree_ensemble_classifier.cpp
 } // namespace opset_1
 namespace opset_3 {
-ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx::tree_ensemble_classifier_impl(node); }
-ONNX_OP("TreeEnsembleClassifier", OPSET_SINCE(3), ai_onnx::opset_3::tree_ensemble_classifier, "ai.onnx.ml");
+ov::OutputVector tree_ensemble_classifier(const ov::frontend::onnx::Node& node) { return ::ov::frontend::onnx::ai_onnx_ml::tree_ensemble_classifier(node); }
+// Registration moved to default domain file: src/op/tree_ensemble_classifier.cpp
 } // namespace opset_3
 
-} // namespace ai_onnx
+} // namespace ai_onnx_ml
 } // namespace onnx
 } // namespace frontend
 } // namespace ov
