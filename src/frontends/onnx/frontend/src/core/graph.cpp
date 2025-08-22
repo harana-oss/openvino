@@ -22,7 +22,7 @@
 #include "openvino/frontend/onnx/node_context.hpp"
 #include "openvino/op/util/op_types.hpp"
 #include "openvino/util/common_util.hpp"
-#include "openvino/util/log.hpp"
+#include <iostream>
 #include "utils/common.hpp"
 
 using namespace ov;
@@ -184,12 +184,10 @@ void Graph::convert_to_ov_nodes() {
         // Info-level logging of ONNX node domain, opset, type, and name
         {
             const std::string dom = node_proto.has_domain() ? node_proto.domain() : "";
-            const int64_t opset = m_model->get_opset_version(dom);
-            const std::string dom_print = dom.empty() ? std::string("ai.onnx") : dom;
-            OPENVINO_INFO("[ONNX] domain=", dom_print,
-                          " opset=", std::to_string(opset),
-                          " type=", node.op_type(),
-                          " name='", node.get_name(), "'");
+            std::cout << "[ONNX] domain=" << (dom.empty() ? std::string("ai.onnx") : dom)
+                      << " opset=" << m_model->get_opset_version(dom)
+                      << " type=" << node.op_type()
+                      << " name='" << node.get_name() << "'" << std::endl;
         }
         if (!m_model->is_operator_available(node.op_type(), node.domain())) {
             // If a node from an unregistered domain is detected, try registering that domain
@@ -299,12 +297,10 @@ void Graph::decode_to_framework_nodes() {
         // Info-level logging when decoding to framework nodes as well
         {
             const std::string dom = node_proto.has_domain() ? node_proto.domain() : "";
-            const int64_t opset = m_model->get_opset_version(dom);
-            const std::string dom_print = dom.empty() ? std::string("ai.onnx") : dom;
-            OPENVINO_INFO("[ONNX][decode] domain=", dom_print,
-                          " opset=", std::to_string(opset),
-                          " type=", node.op_type(),
-                          " name='", node.get_name(), "'");
+            std::cout << "[ONNX][decode] domain=" << (dom.empty() ? std::string("ai.onnx") : dom)
+                      << " opset=" << m_model->get_opset_version(dom)
+                      << " type=" << node.op_type()
+                      << " name='" << node.get_name() << "'" << std::endl;
         }
         ov::OutputVector ov_nodes{make_framework_nodes(node)};
         set_friendly_names(node, ov_nodes);
