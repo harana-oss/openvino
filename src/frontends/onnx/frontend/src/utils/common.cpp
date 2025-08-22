@@ -221,7 +221,7 @@ bool collect_translation_exceptions(const std::shared_ptr<ov::Model>& partially_
     auto print_unsupported = [&](const std::shared_ptr<ov::op::util::FrameworkNode> fw_node) {
         if (output_stream) {
             if (unsupported_operations->size() == 0) {
-                *output_stream << "OpenVINO does not support the following ONNX operations: ";
+                *output_stream << "OpenVINO2 does not support the following ONNX operations: ";
             } else {
                 *output_stream << sep;
             }
