@@ -44,7 +44,7 @@ const char* OPENVINO_ONNX_DOMAIN = "org.openvinotoolkit";
 const char* MICROSOFT_DOMAIN = "com.microsoft";
 const char* PYTORCH_ATEN_DOMAIN = "org.pytorch.aten";
 const char* MMDEPLOY_DOMAIN = "mmdeploy";
-const char* AU_ONNX_ML_DOMAIN = "au.onnx.ml";
+const char* AU_ONNX_ML_DOMAIN = "ai.onnx.ml";
 
 // Central storage of supported translators for operations
 typedef std::unordered_map<std::string, DomainOpset> SupportedOps;
