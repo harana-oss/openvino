@@ -22,6 +22,7 @@
 #include "openvino/frontend/onnx/node_context.hpp"
 #include "openvino/op/util/op_types.hpp"
 #include "openvino/util/common_util.hpp"
+#include "openvino/util/log.hpp"
 #include "utils/common.hpp"
 
 using namespace ov;
@@ -180,6 +181,16 @@ void Graph::convert_to_ov_nodes() {
             op_statistics[op_name]++;
         }
         const Node node{node_proto, this};
+        // Info-level logging of ONNX node domain, opset, type, and name
+        {
+            const std::string dom = node_proto.has_domain() ? node_proto.domain() : "";
+            const int64_t opset = m_model->get_opset_version(dom);
+            const std::string dom_print = dom.empty() ? std::string("ai.onnx") : dom;
+            OPENVINO_INFO("[ONNX] domain=", dom_print,
+                          " opset=", std::to_string(opset),
+                          " type=", node.op_type(),
+                          " name='", node.get_name(), "'");
+        }
         if (!m_model->is_operator_available(node.op_type(), node.domain())) {
             // If a node from an unregistered domain is detected, try registering that domain
             m_model->enable_opset_domain(node.domain(), m_ops_bridge);
@@ -285,6 +296,16 @@ void Graph::decode_to_framework_nodes() {
             op_statistics[op_name]++;
         }
         const Node node{node_proto, this};
+        // Info-level logging when decoding to framework nodes as well
+        {
+            const std::string dom = node_proto.has_domain() ? node_proto.domain() : "";
+            const int64_t opset = m_model->get_opset_version(dom);
+            const std::string dom_print = dom.empty() ? std::string("ai.onnx") : dom;
+            OPENVINO_INFO("[ONNX][decode] domain=", dom_print,
+                          " opset=", std::to_string(opset),
+                          " type=", node.op_type(),
+                          " name='", node.get_name(), "'");
+        }
         ov::OutputVector ov_nodes{make_framework_nodes(node)};
         set_friendly_names(node, ov_nodes);
         // Iterate over the number of outputs for given node in graph.
