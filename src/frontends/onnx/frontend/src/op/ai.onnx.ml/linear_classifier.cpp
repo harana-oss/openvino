@@ -30,6 +30,28 @@ namespace onnx {
 namespace ai_onnx {
 namespace {
 
+// Recursively print the node graph in a simple ASCII format
+void print_node_graph(const std::shared_ptr<ov::Node>& node, std::set<const ov::Node*>& visited, int indent = 0) {
+    if (!node || visited.count(node.get()) > 0) return;
+    visited.insert(node.get());
+    std::cout << std::string(indent, ' ') << "- [" << node->get_friendly_name() << "] " << node->get_type_name();
+    if (!node->get_input_size()) std::cout << " (input)";
+    std::cout << std::endl;
+    for (const auto& input : node->inputs()) {
+        auto src = input.get_source_output().get_node_shared_ptr();
+        print_node_graph(src, visited, indent + 2);
+    }
+}
+
+void print_graph_visual(const ov::OutputVector& outputs) {
+    std::set<const ov::Node*> visited;
+    std::cout << "\n[LinearClassifier] Constructed Graph:" << std::endl;
+    for (const auto& out : outputs) {
+        print_node_graph(out.get_node_shared_ptr(), visited, 0);
+    }
+    std::cout << std::endl;
+}
+
 // Ensure numeric input: prefer f32 for compute. Cast integers and f64 to f32, keep f32 as-is.
 ov::Output<ov::Node> ensure_float(const ov::Output<ov::Node>& inp) {
     const auto et = inp.get_element_type();
@@ -183,7 +205,9 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     std::cout << "[LinearClassifier] Total time: "
               << std::chrono::duration_cast<std::chrono::microseconds>(t_total_end - t_total_begin).count() << " us" << std::endl;
 
-    return {labels_output, transformed};
+    ov::OutputVector result{labels_output, transformed};
+    print_graph_visual(result);
+    return result;
 }
 
 } // namespace
