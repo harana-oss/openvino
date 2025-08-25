@@ -44,8 +44,6 @@ void linear_classifier(const T* input,
 	// Argmax
 	size_t max_idx = std::distance(probabilities, std::max_element(probabilities, probabilities + num_classes));
 	*out_label = class_labels[max_idx];
-}
-
 } // namespace reference
 } // namespace ov
 }
