@@ -43,23 +43,29 @@ ov::Output<ov::Node> ensure_float(const ov::Output<ov::Node>& inp) {
 }
 
 ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
-    // using clock = std::chrono::steady_clock; // removed unused typedef
-    // auto t_total_begin = clock::now();
+    using clock = std::chrono::steady_clock;
+    auto t_total_begin = clock::now();
 
+    auto t_input_begin = clock::now();
     auto X = node.get_ov_inputs().at(0);
     X = ensure_float(X);
-    // Profiling code removed
+    auto t_input_end = clock::now();
+    std::cout << "[LinearClassifier] Input preparation: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_input_end - t_input_begin).count() << " us" << std::endl;
 
     // If rank 1 -> reshape to [1,C]
-    {
-        if (X.get_partial_shape().rank().is_static() && X.get_partial_shape().rank().get_length() == 1) {
-            // Reshape 1D input [C] to [1, C]; use -1 to infer feature dimension even if dynamic
-            auto shape_c = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1, -1});
-            X = std::make_shared<ov::op::v1::Reshape>(X, shape_c, false);
-        }
+    auto t_reshape_begin = clock::now();
+    if (X.get_partial_shape().rank().is_static() && X.get_partial_shape().rank().get_length() == 1) {
+        // Reshape 1D input [C] to [1, C]; use -1 to infer feature dimension even if dynamic
+        auto shape_c = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1, -1});
+        X = std::make_shared<ov::op::v1::Reshape>(X, shape_c, false);
     }
+    auto t_reshape_end = clock::now();
+    std::cout << "[LinearClassifier] Reshape (if needed): "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_reshape_end - t_reshape_begin).count() << " us" << std::endl;
 
     // attributes
+    auto t_attr_begin = clock::now();
     auto coefficients = node.get_attribute_value<std::vector<float>>("coefficients", {});
     CHECK_VALID_NODE(node, !coefficients.empty(), "LinearClassifier: coefficients attribute required");
     auto intercepts = node.get_attribute_value<std::vector<float>>("intercepts", {});
@@ -74,8 +80,13 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     else
         str_labels = node.get_attribute_value<std::vector<std::string>>("classlabels_strings", {});
     size_t n_classes = has_int_labels ? int_labels.size() : str_labels.size();
+    auto t_attr_end = clock::now();
+    std::cout << "[LinearClassifier] Attribute extraction: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_attr_end - t_attr_begin).count() << " us" << std::endl;
+
 
     // Determine number of classifier weight vectors (k)
+    auto t_weight_begin = clock::now();
     size_t k = 0; // number of linear functions before binary expansion
     if (!intercepts.empty()) {
         k = intercepts.size();
@@ -97,11 +108,19 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     auto coeff_const_typed = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{k, n_features}, coefficients);
     auto order = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1,0});
     auto coeff_T = std::make_shared<ov::op::v1::Transpose>(coeff_const_typed, order); // [n_features, k]
+    auto t_weight_end = clock::now();
+    std::cout << "[LinearClassifier] Weight/intercept preparation: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_weight_end - t_weight_begin).count() << " us" << std::endl;
 
     // MatMul: X [N,C] * W [C,k] -> [N,k]
+    auto t_matmul_begin = clock::now();
     std::shared_ptr<ov::Node> scores = std::make_shared<ov::op::v0::MatMul>(X, coeff_T);
+    auto t_matmul_end = clock::now();
+    std::cout << "[LinearClassifier] MatMul: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_matmul_end - t_matmul_begin).count() << " us" << std::endl;
 
     // Add intercepts if provided
+    auto t_bias_begin = clock::now();
     if (!intercepts.empty()) {
         // Bias in f32 to match X after ensure_float
         std::shared_ptr<ov::Node> bias = ov::op::v0::Constant::create(ov::element::f32,
@@ -115,8 +134,13 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
         auto bias_row = std::make_shared<ov::op::v0::Unsqueeze>(bias, axis0); // [1,k]
         scores = std::make_shared<ov::op::v1::Add>(scores, bias_row);
     }
+    auto t_bias_end = clock::now();
+    std::cout << "[LinearClassifier] Bias addition: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_bias_end - t_bias_begin).count() << " us" << std::endl;
+
 
     // post_transform
+    auto t_post_begin = clock::now();
     std::string post_transform = node.get_attribute_value<std::string>("post_transform", "NONE");
     std::shared_ptr<ov::Node> transformed = scores;
     if (post_transform == "LOGISTIC") {
@@ -129,12 +153,20 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     } else { // NONE or unknown
         transformed = scores;
     }
+    auto t_post_end = clock::now();
+    std::cout << "[LinearClassifier] Post-transform: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_post_end - t_post_begin).count() << " us" << std::endl;
 
     // ArgMax using TopK
+    auto t_topk_begin = clock::now();
     auto k_const = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{}, {1});
     auto topk = std::make_shared<ov::op::v1::TopK>(transformed, k_const, 1, ov::op::v1::TopK::Mode::MAX, ov::op::v1::TopK::SortType::NONE, ov::element::i64);
     auto argmax = topk->output(1); // indices
+    auto t_topk_end = clock::now();
+    std::cout << "[LinearClassifier] ArgMax/TopK: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_topk_end - t_topk_begin).count() << " us" << std::endl;
 
+    auto t_label_begin = clock::now();
     std::shared_ptr<ov::Node> labels_output;
     if (has_int_labels) {
         auto labels_const = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{n_classes}, int_labels);
@@ -143,7 +175,13 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
         auto labels_const = ov::op::v0::Constant::create(ov::element::string, ov::Shape{n_classes}, str_labels);
         labels_output = std::make_shared<ov::op::v8::Gather>(labels_const, argmax, ov::op::v0::Constant::create(ov::element::i64, ov::Shape{}, {0}));
     }
+    auto t_label_end = clock::now();
+    std::cout << "[LinearClassifier] Label gathering: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_label_end - t_label_begin).count() << " us" << std::endl;
 
+    auto t_total_end = clock::now();
+    std::cout << "[LinearClassifier] Total time: "
+              << std::chrono::duration_cast<std::chrono::microseconds>(t_total_end - t_total_begin).count() << " us" << std::endl;
 
     return {labels_output, transformed};
 }
