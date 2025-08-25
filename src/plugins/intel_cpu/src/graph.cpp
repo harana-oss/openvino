@@ -1602,7 +1602,15 @@ inline void Graph::ExecuteNode(const NodePtr& node, SyncInferRequest* request, i
         request->throw_if_canceled();
     }
 
+    // Timing start
+    auto start = std::chrono::high_resolution_clock::now();
+
     node->execute(m_stream, numaId);
+
+    // Timing end
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "[NodeTiming] Node: " << node->getName() << " (" << node->getTypeStr() << ") took " << duration << " us" << std::endl;
 }
 
 inline void Graph::ExecuteNodeWithCatch(const NodePtr& node, SyncInferRequest* request, int numaId) const {
