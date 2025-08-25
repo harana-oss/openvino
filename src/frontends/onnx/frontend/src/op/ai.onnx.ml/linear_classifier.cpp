@@ -43,7 +43,7 @@ ov::Output<ov::Node> ensure_float(const ov::Output<ov::Node>& inp) {
 }
 
 ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
-    using clock = std::chrono::steady_clock;
+    // using clock = std::chrono::steady_clock; // removed unused typedef
     // auto t_total_begin = clock::now();
 
     auto X = node.get_ov_inputs().at(0);
