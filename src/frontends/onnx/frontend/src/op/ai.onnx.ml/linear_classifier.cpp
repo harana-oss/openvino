@@ -44,32 +44,22 @@ ov::Output<ov::Node> ensure_float(const ov::Output<ov::Node>& inp) {
 
 ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     using clock = std::chrono::steady_clock;
-    auto t_total_begin = clock::now();
+    // auto t_total_begin = clock::now();
 
     auto X = node.get_ov_inputs().at(0);
-    auto t_ensure_begin = clock::now();
     X = ensure_float(X);
-    auto t_ensure_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] ensure_float: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_ensure_end - t_ensure_begin).count(),
-                  " ms");
+    // Profiling code removed
 
     // If rank 1 -> reshape to [1,C]
     {
-        auto t_reshape_begin = clock::now();
         if (X.get_partial_shape().rank().is_static() && X.get_partial_shape().rank().get_length() == 1) {
             // Reshape 1D input [C] to [1, C]; use -1 to infer feature dimension even if dynamic
             auto shape_c = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1, -1});
             X = std::make_shared<ov::op::v1::Reshape>(X, shape_c, false);
         }
-        auto t_reshape_end = clock::now();
-        OPENVINO_INFO("[LinearClassifier] reshape_if_rank1: ",
-                      std::chrono::duration_cast<std::chrono::milliseconds>(t_reshape_end - t_reshape_begin).count(),
-                      " ms");
     }
 
     // attributes
-    auto t_attr_begin = clock::now();
     auto coefficients = node.get_attribute_value<std::vector<float>>("coefficients", {});
     CHECK_VALID_NODE(node, !coefficients.empty(), "LinearClassifier: coefficients attribute required");
     auto intercepts = node.get_attribute_value<std::vector<float>>("intercepts", {});
@@ -84,13 +74,8 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     else
         str_labels = node.get_attribute_value<std::vector<std::string>>("classlabels_strings", {});
     size_t n_classes = has_int_labels ? int_labels.size() : str_labels.size();
-    auto t_attr_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] parse_attributes: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_attr_end - t_attr_begin).count(),
-                  " ms");
 
     // Determine number of classifier weight vectors (k)
-    auto t_deduce_begin = clock::now();
     size_t k = 0; // number of linear functions before binary expansion
     if (!intercepts.empty()) {
         k = intercepts.size();
@@ -106,37 +91,22 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     CHECK_VALID_NODE(node, k > 0, "LinearClassifier: cannot deduce number of classifiers");
     CHECK_VALID_NODE(node, coefficients.size() % k == 0, "LinearClassifier: coefficients size incompatible with intercepts/classes");
     size_t n_features = coefficients.size() / k;
-    auto t_deduce_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] deduce_dimensions: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_deduce_end - t_deduce_begin).count(),
-                  " ms");
 
     // Build weight constant shaped [k, n_features], then transpose -> [n_features, k]
-    auto t_weights_begin = clock::now();
     // Keep weights in f32 to match X after ensure_float
     auto coeff_const_typed = ov::op::v0::Constant::create(ov::element::f32, ov::Shape{k, n_features}, coefficients);
     auto order = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{2}, {1,0});
     auto coeff_T = std::make_shared<ov::op::v1::Transpose>(coeff_const_typed, order); // [n_features, k]
-    auto t_weights_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] build_weights_transpose: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_weights_end - t_weights_begin).count(),
-                  " ms");
 
     // MatMul: X [N,C] * W [C,k] -> [N,k]
-    auto t_matmul_begin = clock::now();
     std::shared_ptr<ov::Node> scores = std::make_shared<ov::op::v0::MatMul>(X, coeff_T);
-    auto t_matmul_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] matmul: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_matmul_end - t_matmul_begin).count(),
-                  " ms");
 
     // Add intercepts if provided
     if (!intercepts.empty()) {
-        auto t_bias_begin = clock::now();
-    // Bias in f32 to match X after ensure_float
-    std::shared_ptr<ov::Node> bias = ov::op::v0::Constant::create(ov::element::f32,
-                                      ov::Shape{static_cast<size_t>(intercepts.size())},
-                                      intercepts);
+        // Bias in f32 to match X after ensure_float
+        std::shared_ptr<ov::Node> bias = ov::op::v0::Constant::create(ov::element::f32,
+                                                                      ov::Shape{static_cast<size_t>(intercepts.size())},
+                                                                      intercepts);
         if (intercepts.size() != k) {
             // Special binary case: intercepts.size()==1 && k may be 1 or 2; only add if consistent
             CHECK_VALID_NODE(node, intercepts.size() == 1 && k >= 1, "LinearClassifier: unexpected intercepts size");
@@ -144,14 +114,9 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
         auto axis0 = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{1}, {0});
         auto bias_row = std::make_shared<ov::op::v0::Unsqueeze>(bias, axis0); // [1,k]
         scores = std::make_shared<ov::op::v1::Add>(scores, bias_row);
-        auto t_bias_end = clock::now();
-        OPENVINO_INFO("[LinearClassifier] add_intercepts: ",
-                      std::chrono::duration_cast<std::chrono::milliseconds>(t_bias_end - t_bias_begin).count(),
-                      " ms");
     }
 
     // post_transform
-    auto t_post_begin = clock::now();
     std::string post_transform = node.get_attribute_value<std::string>("post_transform", "NONE");
     std::shared_ptr<ov::Node> transformed = scores;
     if (post_transform == "LOGISTIC") {
@@ -164,22 +129,12 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
     } else { // NONE or unknown
         transformed = scores;
     }
-    auto t_post_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] post_transform(", post_transform, "): ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_post_end - t_post_begin).count(),
-                  " ms");
 
     // ArgMax using TopK
-    auto t_topk_begin = clock::now();
     auto k_const = ov::op::v0::Constant::create(ov::element::i32, ov::Shape{}, {1});
     auto topk = std::make_shared<ov::op::v1::TopK>(transformed, k_const, 1, ov::op::v1::TopK::Mode::MAX, ov::op::v1::TopK::SortType::NONE, ov::element::i64);
     auto argmax = topk->output(1); // indices
-    auto t_topk_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] topk_argmax: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_topk_end - t_topk_begin).count(),
-                  " ms");
 
-    auto t_labels_begin = clock::now();
     std::shared_ptr<ov::Node> labels_output;
     if (has_int_labels) {
         auto labels_const = ov::op::v0::Constant::create(ov::element::i64, ov::Shape{n_classes}, int_labels);
@@ -188,15 +143,7 @@ ov::OutputVector linear_classifier_impl(const ov::frontend::onnx::Node& node) {
         auto labels_const = ov::op::v0::Constant::create(ov::element::string, ov::Shape{n_classes}, str_labels);
         labels_output = std::make_shared<ov::op::v8::Gather>(labels_const, argmax, ov::op::v0::Constant::create(ov::element::i64, ov::Shape{}, {0}));
     }
-    auto t_labels_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] gather_labels: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_labels_end - t_labels_begin).count(),
-                  " ms");
 
-    auto t_total_end = clock::now();
-    OPENVINO_INFO("[LinearClassifier] total: ",
-                  std::chrono::duration_cast<std::chrono::milliseconds>(t_total_end - t_total_begin).count(),
-                  " ms");
 
     return {labels_output, transformed};
 }
